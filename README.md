@@ -98,7 +98,7 @@ To install the Brain Observatory Toolbox persistently on a local machine or clou
 
 ## Acknowledgements 
 
-Initial engineering work, done by Ethan Meyers and Xinzhu Fang, was supported by the Foundation of Psychocultural Research and Sherman Fairchild Award at Hampshire College and hosted by the [Center for Brains, Minds, and Machines](https://cbmm.mit.edu/) at the Massachusetts Institute of Technology. 
+Initial engineering work, done by Ethan Meyers and Xinzhu Fang, was supported by the Foundation of Psychocultural Research and Sherman Fairchild Award at Hampshire College and hosted by the [Center for Brains, Minds, and Machines](https://cbmm.mit.edu/) at the Massachusetts Institute of Technology. Development supported by [Matlab Community Toolboxes at INCF](https://github.com/MATLAB-Community-Toolboxes-at-INCF/), now maintained at Waltham-Data-Science.
 
 
 [^1]: Copyright 2016 Allen Institute for Brain Science. Allen Brain Observatory. Available from: [portal.brain-map.org/explore/circuits](http://portal.brain-map.org/explore/circuits).
