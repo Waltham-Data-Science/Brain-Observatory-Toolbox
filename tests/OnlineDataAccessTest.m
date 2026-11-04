@@ -5,18 +5,21 @@ classdef (TestTags = {'Online'}) OnlineDataAccessTest < matlab.unittest.TestCase
 %   exclude it with testToolbox(ExcludeTags="Online").
 %
 %   On first use the toolbox asks (with a dialog) where to cache downloaded
-%   data, unless a cache folder is already configured or the factory cache
-%   folder exists. The setup creates the factory cache folder when neither
-%   is present, so the test runs non-interactively (e.g. on CI).
+%   data. When no cache folder is configured, the setup points the
+%   CacheDirectory preference at a temporary folder for the duration of the
+%   test, so it runs non-interactively (e.g. on CI), and restores the
+%   preference afterwards. (The factory cache folder lives inside the
+%   toolbox folder, which is read-only for an installed toolbox.)
 
     methods (TestClassSetup)
-        function avoidFirstRunCacheDialog(testCase) %#ok<MANU>
+        function avoidFirstRunCacheDialog(testCase)
             preferredCache = bot.internal.Preferences.getPreferenceValue('CacheDirectory');
             if preferredCache == ""
-                factoryCache = fullfile(fileparts(which('bot.listSessions')), 'Cache');
-                if ~isfolder(factoryCache)
-                    mkdir(factoryCache);
-                end
+                tempCache = string(tempname);
+                mkdir(tempCache);
+                prefs = bot.util.getPreferences();
+                prefs.CacheDirectory = tempCache;
+                testCase.addTeardown(@() restoreCacheDirectory(prefs, preferredCache, tempCache));
             end
         end
     end
@@ -28,5 +31,17 @@ classdef (TestTags = {'Online'}) OnlineDataAccessTest < matlab.unittest.TestCase
             testCase.verifyGreaterThan(height(sessions), 0);
             testCase.verifyTrue(ismember('id', sessions.Properties.VariableNames));
         end
+    end
+end
+
+function restoreCacheDirectory(prefs, originalValue, tempCache)
+    try
+        prefs.CacheDirectory = originalValue;
+    catch ME
+        warning('BOT:Test:RestoreCacheDirectoryFailed', ...
+            'Could not restore the CacheDirectory preference to "%s": %s', originalValue, ME.message);
+    end
+    if isfolder(tempCache)
+        rmdir(tempCache, 's');
     end
 end
