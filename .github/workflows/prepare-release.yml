@@ -156,6 +156,13 @@ jobs:
         uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd # v1.21.0
         with:
           draft: true
+          # If the release already exists (it was created by hand on GitHub,
+          # which pushed the tag that started this run), attach the .mltbx
+          # to it without touching its draft state, title or notes.
+          allowUpdates: true
+          omitDraftDuringUpdate: true
+          omitNameDuringUpdate: true
+          omitBodyDuringUpdate: true
           artifacts: ${{ steps.package.outputs.mltbx_path }}
           tag: v${{ env.VERSION_NUMBER }}
           generateReleaseNotes: true
