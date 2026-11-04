@@ -21,7 +21,7 @@ on:
       os_matrix:
         description: 'JSON array of runner images to install on'
         type: string
-        default: '["ubuntu-latest", "windows-latest", "macos-latest"]'
+        default: '["ubuntu-latest", "windows-latest", "macos-15"]'
       matlab_release:
         description: 'MATLAB release to install into'
         type: string
