@@ -1,0 +1,177 @@
+name: Prepare toolbox release
+
+# Modelled on VH-Lab/NDI-matlab's prepare-release-modular.yml:
+#   validate version -> test on every supported MATLAB release -> package
+#   .mltbx -> tag + draft GitHub release with the .mltbx attached -> install
+#   the released .mltbx on Linux/Windows/macOS and test it.
+#
+# The draft release is published by hand after the verify jobs pass.
+# Before running, update the version line in Contents.m (via a PR to main):
+# this workflow does not commit to main.
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+' # Matches tags like v1.2.3
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number in major.minor.patch format. REMINDER: first update the version line in Contents.m to this version (via a PR to main).'
+        required: true
+        type: string
+
+jobs:
+  validate_version:
+    name: Validate version number
+    uses: ehennestad/matbox-actions/.github/workflows/validate-version-job.yml@9e94bf4e70033e4136c45debf28c7e179dbfc827 # v1.9.1
+    with:
+      version: ${{ inputs.version }}
+      ref_name: ${{ github.ref_name }}
+
+  check_contents_version:
+    name: Check Contents.m version
+    needs: validate_version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Compare Contents.m with the release version
+        env:
+          VERSION_NUMBER: ${{ needs.validate_version.outputs.version_number }}
+        run: |
+          contentsVersion=$(grep -oP '(?<=Version )\d+\.\d+\.\d+' Contents.m | head -n 1)
+          if [ "$contentsVersion" != "$VERSION_NUMBER" ]; then
+            echo "::error file=Contents.m::Contents.m says version '$contentsVersion' but the release is '$VERSION_NUMBER'. Update Contents.m on main first."
+            exit 1
+          fi
+          echo "Contents.m version matches release version $VERSION_NUMBER"
+
+  configure_test_matrix:
+    name: Configure release test matrix
+    uses: ehennestad/matbox-actions/.github/workflows/create-matrix-job.yml@9e94bf4e70033e4136c45debf28c7e179dbfc827 # v1.9.1
+    with:
+      tools_directory: tools
+      needs_python: false
+
+  test:
+    name: Run tests (${{ matrix.MATLABVersion }})
+    needs: [validate_version, check_contents_version, configure_test_matrix]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every release from MinimumMatlabRelease in tools/MLToolboxInfo.json
+        # up to the latest one.
+        MATLABVersion: ${{ fromJSON(needs.configure_test_matrix.outputs.matlab_versions) }}
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up MATLAB
+        uses: matlab-actions/setup-matlab@aa8bbc7b76daa63c5d456d1430cbd6cb5b626ab4 # v2
+        with:
+          release: ${{ matrix.MATLABVersion }}
+
+      - name: Install MatBox
+        uses: ehennestad/matbox-actions/install-matbox@9e94bf4e70033e4136c45debf28c7e179dbfc827 # v1.9.1
+
+      - name: Run tests
+        uses: matlab-actions/run-command@37b454c384483087929a3d652be474ba585a9659 # v2
+        with:
+          command: |
+            addpath(genpath("tools"));
+            testToolbox()
+
+      # Read by the "tested with" badge step below, which takes the MATLAB
+      # release from the artifact (folder) name.
+      - name: Save report directory
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: reports-${{ matrix.MATLABVersion }}
+          path: docs/reports
+
+  # Same steps as matbox-actions' package-toolbox-job, minus its
+  # "Final check-ins" commit to main.
+  release:
+    name: Package toolbox and create draft release
+    needs: [test, validate_version]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      mltbx_path: ${{ steps.package.outputs.mltbx_path }}
+    env:
+      VERSION_NUMBER: ${{ needs.validate_version.outputs.version_number }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up MATLAB
+        uses: matlab-actions/setup-matlab@aa8bbc7b76daa63c5d456d1430cbd6cb5b626ab4 # v2
+
+      - name: Install MatBox
+        uses: ehennestad/matbox-actions/install-matbox@9e94bf4e70033e4136c45debf28c7e179dbfc827 # v1.9.1
+
+      # Pushes to the gh-badges branch, not main.
+      - name: Generate "tested with" badge
+        uses: ehennestad/matbox-actions/generate-tested-with-badge@9e94bf4e70033e4136c45debf28c7e179dbfc827 # v1.9.1
+        with:
+          version_number: ${{ env.VERSION_NUMBER }}
+          tools_directory: tools
+
+      - name: Package toolbox
+        id: package
+        uses: ehennestad/matbox-actions/package-toolbox@9e94bf4e70033e4136c45debf28c7e179dbfc827 # v1.9.1
+        with:
+          version_number: ${{ env.VERSION_NUMBER }}
+          source_directory: build/toolbox
+          tools_directory: tools
+
+      - name: Save packaged toolbox
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: toolbox-mltbx
+          path: ${{ steps.package.outputs.mltbx_path }}
+          retention-days: 1
+
+      # On a manual run the tag doesn't exist yet. Create it here with
+      # GITHUB_TOKEN: pushes made with that token don't trigger workflows,
+      # whereas a tag created by publishing the draft would start this
+      # workflow again.
+      - name: Create tag
+        run: |
+          tag="v${VERSION_NUMBER}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" > /dev/null; then
+            echo "Tag ${tag} already exists"
+          else
+            git tag "${tag}" "${GITHUB_SHA}"
+            git push origin "refs/tags/${tag}"
+          fi
+
+      - name: Create draft GitHub release
+        uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd # v1.21.0
+        with:
+          draft: true
+          # If the release already exists (it was created by hand on GitHub,
+          # which pushed the tag that started this run), attach the .mltbx
+          # to it without touching its draft state, title or notes.
+          allowUpdates: true
+          omitDraftDuringUpdate: true
+          omitNameDuringUpdate: true
+          omitBodyDuringUpdate: true
+          artifacts: ${{ steps.package.outputs.mltbx_path }}
+          tag: v${{ env.VERSION_NUMBER }}
+          generateReleaseNotes: true
+          body: "![MATLAB Versions Tested](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2F${{ github.repository }}%2Fgh-badges%2F.github%2Fbadges%2Fv${{ env.VERSION_NUMBER }}%2Ftested_with.json)"
+
+  verify_installation:
+    name: Verify toolbox installation
+    needs: [release, validate_version]
+    uses: ./.github/workflows/verify-toolbox-installation.yml
+    with:
+      artifact_name: toolbox-mltbx
+      expected_version: ${{ needs.validate_version.outputs.version_number }}

@@ -1,0 +1,73 @@
+name: Run tests
+
+on:
+  push:
+    branches: [ "main" ]
+    paths-ignore:
+      - '*.md'
+  pull_request:
+    branches: [ "main" ]
+    paths-ignore:
+      - '*.md'
+  workflow_dispatch:
+    inputs:
+      matlab_release:
+        description: 'MATLAB release'
+        required: false
+        default: 'latest'
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  run_tests:
+    name: Run tests (MATLAB ${{ inputs.matlab_release || 'latest' }})
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up MATLAB
+        uses: matlab-actions/setup-matlab@aa8bbc7b76daa63c5d456d1430cbd6cb5b626ab4 # v2
+        with:
+          release: ${{ inputs.matlab_release || 'latest' }}
+          cache: true
+
+      - name: Install MatBox
+        uses: ehennestad/matbox-actions/install-matbox@9e94bf4e70033e4136c45debf28c7e179dbfc827 # v1.9.1
+
+      - name: Check code
+        uses: ehennestad/matbox-actions/check-code@9e94bf4e70033e4136c45debf28c7e179dbfc827 # v1.9.1
+        with:
+          source_directory: '+bot'
+          create_badge: 'false'
+
+      - name: Run tests
+        uses: matlab-actions/run-command@37b454c384483087929a3d652be474ba585a9659 # v2
+        if: always()
+        with:
+          command: |
+            addpath(genpath("tools"));
+            testToolbox()
+
+      - name: Save reports
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: test-reports
+          path: docs/reports
+
+      - name: Publish test results
+        uses: EnricoMi/publish-unit-test-result-action@c950f6fb443cb5af20a377fd0dfaa78838901040 # v2
+        if: always()
+        with:
+          files: "docs/reports/test-results.xml"

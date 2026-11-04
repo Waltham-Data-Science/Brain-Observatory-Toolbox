@@ -1,0 +1,83 @@
+name: Test toolbox packaging
+
+# Build the .mltbx exactly as a release would (same matbox package-toolbox
+# action and tools/tasks/packageToolbox.m), then install it on Linux,
+# Windows and macOS and test the installed copy. Nothing is tagged or
+# released; the .mltbx is kept as a workflow artifact for manual testing.
+
+on:
+  push:
+    branches: [ "main" ]
+    paths-ignore:
+      - '*.md'
+  pull_request:
+    branches: [ "main" ]
+    paths-ignore:
+      - '*.md'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Package toolbox (test build)
+    runs-on: ubuntu-latest
+    outputs:
+      version_number: ${{ steps.version.outputs.version_number }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Read version from Contents.m
+        id: version
+        run: |
+          version=$(grep -oP '(?<=Version )\d+\.\d+\.\d+' Contents.m | head -n 1)
+          if [ -z "$version" ]; then
+            echo "::error file=Contents.m::No 'Version x.y.z' line found in Contents.m"
+            exit 1
+          fi
+          echo "Packaging test build of version $version"
+          echo "version_number=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Set up MATLAB
+        uses: matlab-actions/setup-matlab@aa8bbc7b76daa63c5d456d1430cbd6cb5b626ab4 # v2
+
+      - name: Install MatBox
+        uses: ehennestad/matbox-actions/install-matbox@9e94bf4e70033e4136c45debf28c7e179dbfc827 # v1.9.1
+
+      - name: Package toolbox
+        id: package
+        uses: ehennestad/matbox-actions/package-toolbox@9e94bf4e70033e4136c45debf28c7e179dbfc827 # v1.9.1
+        with:
+          version_number: ${{ steps.version.outputs.version_number }}
+          source_directory: build/toolbox
+          tools_directory: tools
+
+      - name: List packaged files
+        run: |
+          echo "Packaged ${{ steps.package.outputs.mltbx_path }}"
+          unzip -l "${{ steps.package.outputs.mltbx_path }}" | tee mltbx-contents.txt
+          if grep -E '(^|/)(tools|tests|\.github|\.git)/' mltbx-contents.txt; then
+            echo "::error::Development files were packaged into the toolbox"
+            exit 1
+          fi
+
+      - name: Save packaged toolbox
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: toolbox-mltbx
+          path: ${{ steps.package.outputs.mltbx_path }}
+          retention-days: 14
+
+  verify_installation:
+    name: Verify toolbox installation
+    needs: package
+    uses: ./.github/workflows/verify-toolbox-installation.yml
+    with:
+      artifact_name: toolbox-mltbx
+      expected_version: ${{ needs.package.outputs.version_number }}

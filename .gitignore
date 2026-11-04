@@ -38,3 +38,8 @@ codegen/
 # Keep MATLAB projects local
 *.prj
 resources/
+
+# Toolbox packaging and test output (see tools/tasks)
+build/
+releases/
+docs/reports/

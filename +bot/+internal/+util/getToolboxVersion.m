@@ -52,7 +52,7 @@ function [versionStr, versionNumber] = getToolboxVersion()
         versionStr = S.Version;
     end
 
-    versionNumber = cellfun(@(c) str2double(c), strsplit(S.Version, '.'));
+    versionNumber = cellfun(@(c) str2double(c), strsplit(versionStr, '.'));
     if nargout < 2
         clear versionNumber
     end
