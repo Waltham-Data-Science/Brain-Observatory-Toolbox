@@ -1,0 +1,24 @@
+{
+    "Namespace" : "bot",
+    "ToolboxOptions": {
+        "Identifier": "b303fb41-b242-4760-8d39-063e256c115c",
+        "ToolboxName": "Brain Observatory Toolbox",
+        "AuthorName": "Steve Van Hooser",
+        "AuthorEmail": "steve@walthamdatascience.com",
+        "AuthorCompany": "Waltham Data Science",
+        "Summary": "Access and use the public neural recording datasets from the Allen Brain Observatory",
+        "Description": "A MATLAB toolbox for accessing and using the public neural recording datasets from the Allen Brain Observatory: Visual Coding (Neuropixels and 2-photon calcium imaging) and Visual Behavior (Neuropixels and 2-photon calcium imaging).",
+        "ToolboxGettingStartedGuide": "build/toolbox/gettingStarted.mlx",
+        "MinimumMatlabRelease": "R2023b",
+        "MaximumMatlabRelease": ""
+    },
+    "RootFilesToPackage": [],
+    "FilesToPackage": [
+        "+bot",
+        "examples",
+        "Contents.m",
+        "gettingStarted.mlx",
+        "LICENSE",
+        "README.md"
+    ]
+}

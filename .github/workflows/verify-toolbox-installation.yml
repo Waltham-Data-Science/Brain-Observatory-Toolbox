@@ -1,0 +1,70 @@
+name: Verify toolbox installation
+
+# Reusable job: download a packaged .mltbx artifact, install it on each OS,
+# and run tools/tasks/verifyToolboxInstallation.m against the installed copy.
+# Used by test-packaging.yml (every PR) and prepare-release.yml (releases).
+#
+# Only tools/ and tests/ are checked out (into a subfolder), so the code
+# under test is the installed toolbox, never the repository's +bot folder.
+
+on:
+  workflow_call:
+    inputs:
+      artifact_name:
+        description: 'Name of the uploaded artifact that holds the .mltbx file'
+        type: string
+        required: true
+      expected_version:
+        description: 'Version the installed toolbox must report, e.g. 0.9.5'
+        type: string
+        default: ''
+      os_matrix:
+        description: 'JSON array of runner images to install on'
+        type: string
+        default: '["ubuntu-latest", "windows-latest", "macos-latest"]'
+      matlab_release:
+        description: 'MATLAB release to install into'
+        type: string
+        default: 'latest'
+
+permissions:
+  contents: read
+
+jobs:
+  verify_installation:
+    name: Install and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.os_matrix) }}
+    steps:
+      - name: Check out tools and tests only
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          path: repo
+          sparse-checkout: |
+            tools
+            tests
+          sparse-checkout-cone-mode: false
+
+      - name: Download packaged toolbox
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: mltbx
+
+      - name: Set up MATLAB
+        uses: matlab-actions/setup-matlab@aa8bbc7b76daa63c5d456d1430cbd6cb5b626ab4 # v2
+        with:
+          release: ${{ inputs.matlab_release }}
+
+      - name: Install toolbox and verify it
+        uses: matlab-actions/run-command@37b454c384483087929a3d652be474ba585a9659 # v2
+        with:
+          command: |
+            listing = dir(fullfile(pwd, "mltbx", "*.mltbx"));
+            assert(isscalar(listing), "Expected exactly one .mltbx file, found %d.", numel(listing));
+            toolboxFile = fullfile(listing.folder, listing.name);
+            addpath(genpath(fullfile(pwd, "repo", "tools")));
+            verifyToolboxInstallation(toolboxFile, "ExpectedVersion", "${{ inputs.expected_version }}");
